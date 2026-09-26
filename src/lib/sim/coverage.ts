@@ -11,6 +11,10 @@ export type County = {
   lon: number;
   phase1: boolean;
   town: { name: string; lat: number; lon: number } | null;
+  /** Null means the solver uses every finished home. A number caps demand at that many installs. */
+  campaign?: number | null;
+  /** False when an approval file or a cancelled REP leaves the county out of the run. */
+  zoned?: boolean;
 };
 
 export type Lot = {
@@ -150,6 +154,55 @@ export function miles(aLat: number, aLon: number, bLat: number, bLon: number) {
   const la2 = (bLat * Math.PI) / 180;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** Finished homes the yard is allowed to cover. Permits stay out until a scenario commissions them. */
+export function demandOf(county: County) {
+  if (county.zoned === false) return 0;
+  const finished = Math.max(0, county.homes - county.permits);
+  if (county.campaign == null) return finished;
+  return Math.min(finished, Math.max(0, county.campaign));
+}
+
+export type Tier = "metro" | "suburb" | "rural";
+
+export function tierOf(county: County, metros: County[]): Tier {
+  if (county.phase1) return "metro";
+  let near = Infinity;
+  for (const metro of metros) near = Math.min(near, miles(county.lat, county.lon, metro.lat, metro.lon));
+  return near < 42 ? "suburb" : "rural";
+}
+
+/** Irregular yard footprint in lat/lon. Size is exaggerated so the plan reads on a county zoom. Not a rectangle. */
+export function warehouseRing(lat: number, lon: number, id: string, sqft: number | null): [number, number][] {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  const rot = (((h >>> 0) % 360) * Math.PI) / 180;
+  const stretch = 0.82 + ((h >>> 8) % 50) / 100;
+  const span = 0.11 + Math.min(0.05, Math.sqrt(Math.max(sqft ?? 80000, 20000)) / 9000);
+  const local: [number, number][] = [
+    [0.02, 0.04],
+    [1.2 * stretch, 0.0],
+    [1.14 * stretch, 0.28],
+    [0.86 * stretch, 0.22],
+    [0.9 * stretch, 0.46],
+    [1.18 * stretch, 0.5],
+    [1.1 * stretch, 0.74],
+    [0.62 * stretch, 0.68],
+    [0.5 * stretch, 1.08],
+    [0.22, 0.98],
+    [0.28, 0.62],
+    [0.0, 0.7],
+  ];
+  const cos = Math.cos(rot);
+  const sin = Math.sin(rot);
+  const mlat = span;
+  const mlon = span / Math.max(0.25, Math.cos((lat * Math.PI) / 180));
+  return local.map(([x, y]) => {
+    const xr = x * cos - y * sin;
+    const yr = x * sin + y * cos;
+    return [lat + yr * mlat, lon + xr * mlon] as [number, number];
+  });
 }
 
 function buildGraph(roads: Road[]): Graph {
@@ -339,8 +392,10 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
   const reachable = (cand: Cand, i: number) => {
     const county = data.counties[i]!;
     const d = roadMiles(cand, i);
+    const forcedHome = forcedIds.has(cand.id) && county.id === cand.countyId;
+    if (county.zoned === false && !forcedHome) return Infinity;
     if (forcedIds.has(cand.id)) {
-      if (county.id === cand.countyId) return Math.min(d, spec.maxMiles);
+      if (forcedHome) return Math.min(d, spec.maxMiles);
       if (spurOk[i] && d <= spec.maxMiles) return d;
       return Infinity;
     }
@@ -385,8 +440,7 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
       const members = groups[y]!.slice().sort((a, b) => dist[a]! - dist[b]!);
       let room = cap;
       for (const i of members) {
-        const finished = Math.max(0, data.counties[i]!.homes - data.counties[i]!.permits);
-        const take = Math.min(room, finished);
+        const take = Math.min(room, demandOf(data.counties[i]!));
         const keepForced = forcedIds.has(yardsOpen[y]!.id) && data.counties[i]!.id === yardsOpen[y]!.countyId;
         if (take <= 0 && !keepForced) {
           owner[i] = -1;
@@ -415,7 +469,7 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
       const y = held.owner[i]!;
       if (y >= 0 && held.dist[i]! <= d) continue;
       const county = data.counties[i]!;
-      homes += Math.max(0, county.homes - county.permits);
+      homes += demandOf(county);
       people += county.pop;
     }
     const techs = Math.max(people >= 8000 ? 1 : 0, Math.floor(people / spec.residentsPerTech));
@@ -492,12 +546,15 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
     const y = held.owner[i]!;
     const yard = y >= 0 ? open[y]! : null;
     const forcedHere = Boolean(yard && forcedIds.has(yard.id) && yard.countyId === county.id);
-    const off = (!phaseOk[i] || !spurOk[i]) && !forcedHere && held.covered[i] === 0;
+    const notZoned = county.zoned === false && !forcedHere;
+    const off = notZoned || ((!phaseOk[i] || !spurOk[i]) && !forcedHere && held.covered[i] === 0);
     const offLimits = off ? county.homes : 0;
     const got = off ? 0 : held.covered[i]!;
-    const gap = off ? 0 : Math.max(0, county.homes - county.permits - got);
+    const gap = off ? 0 : Math.max(0, demandOf(county) - got);
     let why: string;
-    if (!spurOk[i] && !forcedHere) {
+    if (notZoned) {
+      why = "Not zoned. No approval covers this county, or the REP pulled the territory.";
+    } else if (!spurOk[i] && !forcedHere) {
       why = `No major truck route within ${spec.spur} miles. The corridors on this map do not reach the county.`;
     } else if (off) {
       why = "Off limits in phase 1. Only Austin, Houston, San Antonio, and Dallas–Fort Worth are unlocked. Drag a territory onto this county to force a yard.";
@@ -622,10 +679,11 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
   totals.engineers = yards.reduce((s, y) => s + y.engineers, 0);
   const byId: Record<string, Cell> = {};
   for (const cell of cells) byId[cell.id] = cell;
+  const zonedOut = cells.reduce((s, c) => s + (c.why.startsWith("Not zoned") ? c.offLimits : 0), 0);
   const headline =
     spec.phase === 1
-      ? `Phase 1 covers ${totals.covered.toLocaleString()} of ${totals.total.toLocaleString()} homes with ${yards.length} yards. ${totals.offLimits.toLocaleString()} are off limits outside Austin, Houston, San Antonio, and Dallas–Fort Worth. Those metro yards are the obvious part.`
-      : `Phase 2 covers ${totals.covered.toLocaleString()} of ${totals.total.toLocaleString()} homes with ${yards.length} yards. ${totals.offLimits.toLocaleString()} stay off a truck corridor. ${totals.gap.toLocaleString()} finished homes are on a route but the crews run out.`;
+      ? `Phase 1 covers ${totals.covered.toLocaleString()} of ${totals.total.toLocaleString()} homes with ${yards.length} yards. ${totals.offLimits.toLocaleString()} homes are not zoned for this run.`
+      : `Phase 2 covers ${totals.covered.toLocaleString()} of ${totals.total.toLocaleString()} homes with ${yards.length} yards. ${zonedOut.toLocaleString()} homes are not zoned. ${totals.gap.toLocaleString()} finished homes sit on a route with no crew left.`;
   return { yards, cells, byId, used, spurs, totals, headline };
 }
 

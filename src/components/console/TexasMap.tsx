@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GeoJSON as GeoLayer, LayerGroup, Map as LeafletMap, Polygon } from "leaflet";
 import type { Cell, County, Road, Yard } from "@/lib/sim/coverage";
-import { territoryRing } from "@/lib/sim/coverage";
+import { tierOf, warehouseRing } from "@/lib/sim/coverage";
 import "leaflet/dist/leaflet.css";
 
 const COLORS = ["#9d1c1c", "#e08a45", "#1f7a4d", "#2f5f8a", "#8a4b2f", "#6b3fa0", "#b4532a", "#1d6a62", "#8f3d55", "#3d5a40", "#a15c2f", "#245c6b", "#6a4a2a", "#3f6f8a", "#7a3e2e", "#2e6b45"];
@@ -23,13 +23,16 @@ type Props = {
   fleet: { lat: number; lon: number }[];
   onDrop: (yardId: string, countyId: string, lat: number, lon: number) => void;
   onHover: (countyId: string | null) => void;
+  onPick: (countyId: string) => void;
+  focusNonce: number;
+  focusId: string | null;
 };
 
 type Ring = [number, number][];
 type Feat = { id: string; rings: Ring[] };
 let countyFeats: Feat[] = [];
 
-export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fleet, onDrop, onHover }: Props) {
+export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fleet, onDrop, onHover, onPick, focusNonce, focusId }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const countyLayer = useRef<GeoLayer | null>(null);
@@ -43,9 +46,14 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
   const hoverRef = useRef<string | null>(null);
   const dropRef = useRef(onDrop);
   const hoverCb = useRef(onHover);
+  const pickRef = useRef(onPick);
+  const dragLock = useRef(false);
+  const countiesRef = useRef(counties);
   cellsRef.current = cells;
   dropRef.current = onDrop;
   hoverCb.current = onHover;
+  pickRef.current = onPick;
+  countiesRef.current = counties;
 
   useEffect(() => {
     if (!host.current || mapRef.current) return;
@@ -111,6 +119,11 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
           paintCounties();
         }
       });
+      map.on("click", (e) => {
+        if (dragLock.current) return;
+        const id = hit(e.latlng.lat, e.latlng.lng);
+        if (id) pickRef.current(id);
+      });
       mapRef.current = map;
       observer = new ResizeObserver(() => map?.invalidateSize());
       observer.observe(host.current);
@@ -135,28 +148,34 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
     const layer = countyLayer.current;
     if (!layer) return;
     const byId = new Map(cellsRef.current.map((c) => [c.id, c]));
+    const list = countiesRef.current;
+    const metros = list.filter((c) => c.phase1);
+    const tierFill = { metro: "#c4963a", suburb: "#6e90aa", rural: "#5d8a52" };
     layer.eachLayer((raw) => {
       const feature = (raw as { feature?: { properties?: { id?: string } } }).feature;
       const id = feature?.properties?.id;
       if (!id) return;
+      const county = list.find((c) => c.id === id);
+      const tier = county ? tierOf(county, metros) : "rural";
       const cell = byId.get(id);
       const hot = id === hoverRef.current;
-      let fill = "#c4b49a";
-      let fillOpacity = 0.28;
-      let color = "#5c6a72";
+      let fill: string = tierFill[tier];
+      let fillOpacity = tier === "metro" ? 0.5 : tier === "suburb" ? 0.38 : 0.26;
+      let color = tier === "metro" ? "#6a4a12" : tier === "suburb" ? "#31485a" : "#2c4a28";
+      let dash: string | undefined = tier === "suburb" ? "7 5" : tier === "rural" ? "1 4" : undefined;
+      let weight = hot ? 2.8 : tier === "metro" ? 1.5 : 1;
       if (cell?.offLimits) {
-        fill = "#6d7c76";
-        fillOpacity = 0.42;
-        color = "#3d4a45";
+        fill = "#5c6762";
+        fillOpacity = 0.58;
+        color = "#2e3834";
+        dash = undefined;
       } else if (cell?.yardId && cell.covered > 0) {
         fill = yardColor(cell.yardId);
-        fillOpacity = hot ? 0.62 : 0.38;
+        fillOpacity = hot ? 0.7 : tier === "metro" ? 0.55 : tier === "suburb" ? 0.4 : 0.28;
         color = fill;
-      } else if (cell && cell.gap > 0) {
-        fill = "#e0c48a";
-        fillOpacity = 0.4;
       }
-      (raw as Polygon).setStyle({ color, weight: hot ? 2.4 : 0.7, fillColor: fill, fillOpacity });
+      if (cell && cell.underConstruction > 0 && !cell.offLimits) color = "#c9842a";
+      (raw as Polygon).setStyle({ color, weight, fillColor: fill, fillOpacity, dashArray: dash ?? "" });
     });
   };
 
@@ -168,6 +187,14 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
       paintDots(L, mapRef.current, svgRef.current, dots, fleet);
     });
   }, [ready, cells, dots, fleet]);
+
+  useEffect(() => {
+    if (!ready || focusNonce === 0 || !focusId || !mapRef.current) return;
+    const county = counties.find((c) => c.id === focusId);
+    if (!county) return;
+    const map = mapRef.current;
+    map.flyTo([county.lat, county.lon], Math.max(map.getZoom(), 9), { duration: 0.55 });
+  }, [ready, focusId, focusNonce, counties]);
 
   useEffect(() => {
     if (!ready || !roadLayer.current || !usedLayer.current) return;
@@ -199,22 +226,41 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
       pins.clearLayers();
       for (const yard of yards) {
         const color = yardColor(yard.id);
-        const ring = territoryRing(yard, cells, counties);
-        const hull = L.polygon(ring, { color, weight: 2.4, fillColor: color, fillOpacity: 0.08, interactive: false });
-        hull.addTo(hulls);
+        const ring = warehouseRing(yard.lat, yard.lon, yard.id, yard.sqft);
+        const footprint = L.polygon(ring, {
+          color: "#0c1210",
+          weight: 1.6,
+          fillColor: color,
+          fillOpacity: 0.92,
+          interactive: false,
+        });
+        footprint.addTo(pins);
         const icon = L.divIcon({
           className: "site-icon",
-          html: `<svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><path d="M5 21 L9 8 L16 12 L24 5 L32 14 L30 26 L20 32 L10 28 Z" fill="${color}" stroke="#0c1210" stroke-width="1.6"/></svg>`,
-          iconSize: [36, 36],
-          iconAnchor: [18, 18],
+          html: `<svg width="28" height="28" viewBox="0 0 36 36" aria-hidden="true"><path d="M4 22 L11 5 L18 12 L28 4 L33 16 L29 29 L16 33 L7 26 Z" fill="${color}" stroke="#0c1210" stroke-width="2"/></svg>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
         });
         const marker = L.marker([yard.lat, yard.lon], { icon, draggable: true, zIndexOffset: 800 });
-        marker.bindTooltip(`${yard.name} · drag`, { direction: "top" });
+        marker.bindTooltip(yard.name, { direction: "top" });
+        marker.on("dragstart", () => {
+          dragLock.current = true;
+        });
+        marker.on("drag", () => {
+          const ll = marker.getLatLng();
+          const dLat = ll.lat - yard.lat;
+          const dLon = ll.lng - yard.lon;
+          footprint.setLatLngs(ring.map(([lat, lon]) => [lat + dLat, lon + dLon]));
+        });
         marker.on("dragend", () => {
           const ll = marker.getLatLng();
           const countyId = hit(ll.lat, ll.lng);
+          window.setTimeout(() => {
+            dragLock.current = false;
+          }, 0);
           if (!countyId) {
             marker.setLatLng([yard.lat, yard.lon]);
+            footprint.setLatLngs(ring);
             return;
           }
           dropRef.current(yard.id, countyId, ll.lat, ll.lng);
@@ -271,7 +317,7 @@ function paintDots(
     const y = pt.y - origin.y;
     homes += `M${x.toFixed(1)} ${y.toFixed(1)}m${-r},0a${r},${r} 0 1,0 ${r * 2},0a${r},${r} 0 1,0 ${-r * 2},0`;
   }
-  const fr = r * 2.4;
+  const fr = Math.max(2.2, r * 1.35);
   let rings = "";
   for (const dot of fleet) {
     if (!bounds.contains([dot.lat, dot.lon])) continue;
@@ -284,16 +330,15 @@ function paintDots(
   if (homes) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", homes);
-    path.setAttribute("fill", "#14201c");
-    path.setAttribute("fill-opacity", "0.55");
+    path.setAttribute("fill", "#1a2420");
+    path.setAttribute("fill-opacity", "0.72");
     svg.appendChild(path);
   }
   if (rings) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", rings);
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "#9d1c1c");
-    path.setAttribute("stroke-width", "1.4");
+    path.setAttribute("fill", "#9d1c1c");
+    path.setAttribute("fill-opacity", "0.9");
     svg.appendChild(path);
   }
 }

@@ -1,0 +1,90 @@
+[
+  {
+    "id": "houston",
+    "name": "Houston",
+    "lat": 29.76,
+    "lon": -95.37,
+    "radius_miles": 35,
+    "install_sites": 80000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 39.2,
+    "start_date": "2026-11-01"
+  },
+  {
+    "id": "dfw",
+    "name": "Dallas Fort Worth",
+    "lat": 32.78,
+    "lon": -96.8,
+    "radius_miles": 40,
+    "install_sites": 90000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 39.2,
+    "start_date": "2026-11-01"
+  },
+  {
+    "id": "austin",
+    "name": "Austin",
+    "lat": 30.27,
+    "lon": -97.74,
+    "radius_miles": 30,
+    "install_sites": 40000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 39.2,
+    "start_date": "2026-12-01"
+  },
+  {
+    "id": "san-antonio",
+    "name": "San Antonio",
+    "lat": 29.42,
+    "lon": -98.49,
+    "radius_miles": 28,
+    "install_sites": 35000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 39.2,
+    "start_date": "2026-12-01"
+  },
+  {
+    "id": "lubbock",
+    "name": "Lubbock",
+    "lat": 33.58,
+    "lon": -101.86,
+    "radius_miles": 30,
+    "install_sites": 18000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-03-01"
+  },
+  {
+    "id": "mcallen",
+    "name": "McAllen",
+    "lat": 26.2,
+    "lon": -98.23,
+    "radius_miles": 25,
+    "install_sites": 16000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-02-01"
+  },
+  {
+    "id": "midland",
+    "name": "Midland",
+    "lat": 31.99,
+    "lon": -102.08,
+    "radius_miles": 28,
+    "install_sites": 15000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-04-01"
+  },
+  {
+    "id": "tyler",
+    "name": "Tyler",
+    "lat": 32.35,
+    "lon": -95.3,
+    "radius_miles": 25,
+    "install_sites": 15000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-04-01"
+  }
+]
