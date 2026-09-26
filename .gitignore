@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.output/
+.vercel/
+.nitro/
+.wrangler/
+screenshots/
+artifacts/
+*.log
+.env
+.env.*
+.DS_Store
+.grok/*
+!.grok/app-env.json
+
+.project_id
+.node_modules.lock

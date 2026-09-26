@@ -1,0 +1,149 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-ink: #0c1210;
+  --color-panel: #141c19;
+  --color-panel-2: #1c2622;
+  --color-line: #2c3a34;
+  --color-paper: #e4ece7;
+  --color-muted: #8b9a93;
+  --color-copper: #e08a45;
+  --color-signal: #e24b4b;
+  --color-node: #9b8cff;
+  --color-flow: #3dbe9a;
+  --color-locked: #6d7c76;
+}
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html,
+  body {
+    height: 100%;
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: #c5cfc8;
+  font-family: var(--font-sans);
+}
+
+.county-tip {
+  background: #141c19;
+  color: #e4ece7;
+  border: 0;
+  border-radius: 0;
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+}
+
+.site-icon,
+.dot-sheet {
+  background: transparent;
+  border: 0;
+}
+
+.dot-sheet {
+  position: absolute;
+  pointer-events: none;
+}
+
+.yard {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e08a45;
+}
+
+.yard-open {
+  background: #e08a45;
+}
+
+.yard-idle {
+  background: transparent;
+}
+
+.yard-no {
+  background: #6d7c76;
+  border-color: #6d7c76;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: none;
+}
+
+.swatch-installed,
+.swatch-optimal {
+  background: #1f7a4d;
+}
+
+.swatch-near {
+  background: #7dcea0;
+}
+
+.swatch-wave1 {
+  background: #9d1c1c;
+}
+
+.swatch-wave2,
+.swatch-sub {
+  background: #e24b4b;
+}
+
+.swatch-wave3,
+.swatch-average {
+  background: #e08a45;
+}
+
+.swatch-gap {
+  background: #243038;
+}
+
+.swatch-waiting {
+  background: #c47a7a;
+}
+
+.swatch-out {
+  background: #8b9a93;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: none;
+}
+
+.swatch-install {
+  background: var(--color-signal);
+}
+
+.swatch-gap {
+  background: var(--color-copper);
+}
+
+.swatch-wait {
+  background: var(--color-signal);
+  opacity: 0.35;
+}
+
+.swatch-out {
+  background: var(--color-locked);
+}
+
+.swatch-yard {
+  background: var(--color-copper);
+  border-radius: 0;
+}

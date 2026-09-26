@@ -1,0 +1,299 @@
+import { useEffect, useRef, useState } from "react";
+import type { GeoJSON as GeoLayer, LayerGroup, Map as LeafletMap, Polygon } from "leaflet";
+import type { Cell, County, Road, Yard } from "@/lib/sim/coverage";
+import { territoryRing } from "@/lib/sim/coverage";
+import "leaflet/dist/leaflet.css";
+
+const COLORS = ["#9d1c1c", "#e08a45", "#1f7a4d", "#2f5f8a", "#8a4b2f", "#6b3fa0", "#b4532a", "#1d6a62", "#8f3d55", "#3d5a40", "#a15c2f", "#245c6b", "#6a4a2a", "#3f6f8a", "#7a3e2e", "#2e6b45"];
+
+export function yardColor(id: string) {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return COLORS[(h >>> 0) % COLORS.length]!;
+}
+
+type Props = {
+  counties: County[];
+  cells: Cell[];
+  yards: Yard[];
+  roads: Road[];
+  used: [number, number][][];
+  spurs: [number, number][][];
+  dots: [number, number][];
+  fleet: { lat: number; lon: number }[];
+  onDrop: (yardId: string, countyId: string, lat: number, lon: number) => void;
+  onHover: (countyId: string | null) => void;
+};
+
+type Ring = [number, number][];
+type Feat = { id: string; rings: Ring[] };
+let countyFeats: Feat[] = [];
+
+export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fleet, onDrop, onHover }: Props) {
+  const host = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+  const countyLayer = useRef<GeoLayer | null>(null);
+  const roadLayer = useRef<LayerGroup | null>(null);
+  const usedLayer = useRef<LayerGroup | null>(null);
+  const hullLayer = useRef<LayerGroup | null>(null);
+  const pinLayer = useRef<LayerGroup | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [ready, setReady] = useState(false);
+  const cellsRef = useRef(cells);
+  const hoverRef = useRef<string | null>(null);
+  const dropRef = useRef(onDrop);
+  const hoverCb = useRef(onHover);
+  cellsRef.current = cells;
+  dropRef.current = onDrop;
+  hoverCb.current = onHover;
+
+  useEffect(() => {
+    if (!host.current || mapRef.current) return;
+    let cancelled = false;
+    let map: LeafletMap | null = null;
+    let observer: ResizeObserver | null = null;
+    void import("leaflet").then((L) => {
+      if (cancelled || !host.current) return;
+      map = L.map(host.current, {
+        zoomControl: false,
+        attributionControl: true,
+        minZoom: 5,
+        maxZoom: 14,
+        zoomAnimation: false,
+        fadeAnimation: false,
+        markerZoomAnimation: false,
+      }).setView([31.2, -99.2], 6);
+      L.control.zoom({ position: "bottomright" }).addTo(map);
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}", {
+        attribution: "Tiles &copy; Esri, USGS, NOAA",
+        maxZoom: 19,
+      }).addTo(map);
+      map.setMaxBounds(L.latLngBounds([24.8, -107.4], [37.2, -92.6]));
+      countyLayer.current = L.geoJSON(undefined, {
+        interactive: false,
+        style: () => ({ color: "#5c6a72", weight: 0.6, fillColor: "#c4b49a", fillOpacity: 0.25 }),
+      }).addTo(map);
+      fetch("/data/tx-counties.geojson")
+        .then((r) => r.json())
+        .then((geo: { features: { properties: { id: string }; geometry: { type: string; coordinates: Ring[] | Ring[][] } }[] }) => {
+          if (!countyLayer.current) return;
+          countyLayer.current.addData(geo as never);
+          countyFeats = geo.features.map((f) => {
+            const rings: Ring[] = [];
+            if (f.geometry.type === "Polygon") {
+              rings.push((f.geometry.coordinates as Ring[])[0] ?? []);
+            } else {
+              for (const poly of f.geometry.coordinates as Ring[][]) rings.push(poly[0] ?? []);
+            }
+            return { id: f.properties.id, rings };
+          });
+          paintCounties();
+        })
+        .catch(() => undefined);
+      roadLayer.current = L.layerGroup().addTo(map);
+      usedLayer.current = L.layerGroup().addTo(map);
+      hullLayer.current = L.layerGroup().addTo(map);
+      pinLayer.current = L.layerGroup().addTo(map);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", "dot-sheet");
+      svg.style.pointerEvents = "none";
+      map.getPane("overlayPane")?.appendChild(svg);
+      svgRef.current = svg;
+      const redraw = () => {
+        if (svgRef.current && mapRef.current) paintDots(L, mapRef.current, svgRef.current, dotsRef.current, fleetRef.current);
+      };
+      map.on("zoomend moveend viewreset", redraw);
+      map.on("mousemove", (e) => {
+        const id = hit(e.latlng.lat, e.latlng.lng);
+        if (id !== hoverRef.current) {
+          hoverRef.current = id;
+          hoverCb.current(id);
+          paintCounties();
+        }
+      });
+      mapRef.current = map;
+      observer = new ResizeObserver(() => map?.invalidateSize());
+      observer.observe(host.current);
+      requestAnimationFrame(() => map?.invalidateSize());
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      svgRef.current?.remove();
+      map?.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  const dotsRef = useRef(dots);
+  const fleetRef = useRef(fleet);
+  dotsRef.current = dots;
+  fleetRef.current = fleet;
+
+  const paintCounties = () => {
+    const layer = countyLayer.current;
+    if (!layer) return;
+    const byId = new Map(cellsRef.current.map((c) => [c.id, c]));
+    layer.eachLayer((raw) => {
+      const feature = (raw as { feature?: { properties?: { id?: string } } }).feature;
+      const id = feature?.properties?.id;
+      if (!id) return;
+      const cell = byId.get(id);
+      const hot = id === hoverRef.current;
+      let fill = "#c4b49a";
+      let fillOpacity = 0.28;
+      let color = "#5c6a72";
+      if (cell?.offLimits) {
+        fill = "#6d7c76";
+        fillOpacity = 0.42;
+        color = "#3d4a45";
+      } else if (cell?.yardId && cell.covered > 0) {
+        fill = yardColor(cell.yardId);
+        fillOpacity = hot ? 0.62 : 0.38;
+        color = fill;
+      } else if (cell && cell.gap > 0) {
+        fill = "#e0c48a";
+        fillOpacity = 0.4;
+      }
+      (raw as Polygon).setStyle({ color, weight: hot ? 2.4 : 0.7, fillColor: fill, fillOpacity });
+    });
+  };
+
+  useEffect(() => {
+    if (!ready) return;
+    paintCounties();
+    void import("leaflet").then((L) => {
+      if (!mapRef.current || !svgRef.current) return;
+      paintDots(L, mapRef.current, svgRef.current, dots, fleet);
+    });
+  }, [ready, cells, dots, fleet]);
+
+  useEffect(() => {
+    if (!ready || !roadLayer.current || !usedLayer.current) return;
+    const roadsGroup = roadLayer.current;
+    const usedGroup = usedLayer.current;
+    void import("leaflet").then((L) => {
+      roadsGroup.clearLayers();
+      usedGroup.clearLayers();
+      for (const road of roads) {
+        L.polyline(road.points, { color: "#4a3b30", weight: 2.5, opacity: 0.55, interactive: false }).addTo(roadsGroup);
+      }
+      for (const seg of used) {
+        L.polyline(seg, { color: "#f6ecdf", weight: 7, opacity: 0.85, interactive: false }).addTo(usedGroup);
+        L.polyline(seg, { color: "#e08a45", weight: 3.2, opacity: 0.95, interactive: false }).addTo(usedGroup);
+      }
+      for (const spur of spurs) {
+        L.polyline(spur, { color: "#1f7a4d", weight: 1.2, opacity: 0.55, dashArray: "3 4", interactive: false }).addTo(usedGroup);
+      }
+    });
+  }, [ready, roads, used, spurs]);
+
+  useEffect(() => {
+    if (!ready || !hullLayer.current || !pinLayer.current || !mapRef.current) return;
+    const hulls = hullLayer.current;
+    const pins = pinLayer.current;
+    const map = mapRef.current;
+    void import("leaflet").then((L) => {
+      hulls.clearLayers();
+      pins.clearLayers();
+      for (const yard of yards) {
+        const color = yardColor(yard.id);
+        const ring = territoryRing(yard, cells, counties);
+        const hull = L.polygon(ring, { color, weight: 2.4, fillColor: color, fillOpacity: 0.08, interactive: false });
+        hull.addTo(hulls);
+        const icon = L.divIcon({
+          className: "site-icon",
+          html: `<svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><path d="M5 21 L9 8 L16 12 L24 5 L32 14 L30 26 L20 32 L10 28 Z" fill="${color}" stroke="#0c1210" stroke-width="1.6"/></svg>`,
+          iconSize: [36, 36],
+          iconAnchor: [18, 18],
+        });
+        const marker = L.marker([yard.lat, yard.lon], { icon, draggable: true, zIndexOffset: 800 });
+        marker.bindTooltip(`${yard.name} · drag`, { direction: "top" });
+        marker.on("dragend", () => {
+          const ll = marker.getLatLng();
+          const countyId = hit(ll.lat, ll.lng);
+          if (!countyId) {
+            marker.setLatLng([yard.lat, yard.lon]);
+            return;
+          }
+          dropRef.current(yard.id, countyId, ll.lat, ll.lng);
+        });
+        marker.addTo(pins);
+      }
+      void map;
+    });
+  }, [ready, yards, cells, counties]);
+
+  return <div ref={host} className="absolute inset-0" />;
+}
+
+function hit(lat: number, lon: number) {
+  for (const feat of countyFeats) {
+    for (const ring of feat.rings) {
+      if (inside(lon, lat, ring)) return feat.id;
+    }
+  }
+  return null;
+}
+
+function inside(lon: number, lat: number, ring: Ring) {
+  let on = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i]![0];
+    const yi = ring[i]![1];
+    const xj = ring[j]![0];
+    const yj = ring[j]![1];
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi) on = !on;
+  }
+  return on;
+}
+
+function paintDots(
+  L: typeof import("leaflet"),
+  map: LeafletMap,
+  svg: SVGSVGElement,
+  dots: [number, number][],
+  fleet: { lat: number; lon: number }[],
+) {
+  const bounds = map.getBounds().pad(0.2);
+  const origin = map.latLngToLayerPoint(bounds.getNorthWest());
+  L.DomUtil.setPosition(svg as unknown as HTMLElement, origin);
+  const size = map.getSize();
+  svg.setAttribute("width", String(size.x + 40));
+  svg.setAttribute("height", String(size.y + 40));
+  const r = Math.max(1.3, (map.getZoom() - 5) * 0.9);
+  let homes = "";
+  for (const [lat, lon] of dots) {
+    if (!bounds.contains([lat, lon])) continue;
+    const pt = map.latLngToLayerPoint([lat, lon]);
+    const x = pt.x - origin.x;
+    const y = pt.y - origin.y;
+    homes += `M${x.toFixed(1)} ${y.toFixed(1)}m${-r},0a${r},${r} 0 1,0 ${r * 2},0a${r},${r} 0 1,0 ${-r * 2},0`;
+  }
+  const fr = r * 2.4;
+  let rings = "";
+  for (const dot of fleet) {
+    if (!bounds.contains([dot.lat, dot.lon])) continue;
+    const pt = map.latLngToLayerPoint([dot.lat, dot.lon]);
+    const x = pt.x - origin.x;
+    const y = pt.y - origin.y;
+    rings += `M${x.toFixed(1)} ${y.toFixed(1)}m${-fr},0a${fr},${fr} 0 1,0 ${fr * 2},0a${fr},${fr} 0 1,0 ${-fr * 2},0`;
+  }
+  svg.replaceChildren();
+  if (homes) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", homes);
+    path.setAttribute("fill", "#14201c");
+    path.setAttribute("fill-opacity", "0.55");
+    svg.appendChild(path);
+  }
+  if (rings) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", rings);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "#9d1c1c");
+    path.setAttribute("stroke-width", "1.4");
+    svg.appendChild(path);
+  }
+}
