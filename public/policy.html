@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Warehouse open policy</title>
+  <style>
+    body { font: 16px/1.45 Georgia, serif; max-width: 40rem; margin: 2rem auto; color: #0c1210; padding: 0 1rem; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 13px; }
+    pre { background: #f4f6f4; padding: 1rem; overflow: auto; }
+    h1 { font-size: 1.4rem; }
+  </style>
+</head>
+<body>
+  <p><a href="/">← planner</a></p>
+  <h1>When does the solver open a warehouse?</h1>
+  <p>It does not take a warehouse count as input. It opens the next candidate that passes every rule below, then stops when none do. Cap is 28.</p>
+  <ol>
+    <li>Phase 1: candidate county is Austin, Houston, San Antonio, or DFW. Phase 2: any county on a mapped corridor.</li>
+    <li>County sits within 40 miles of a mapped interstate / US corridor.</li>
+    <li>Road distance to that county ≤ max road miles (default 80).</li>
+    <li>At least 70 road miles from every warehouse already open.</li>
+    <li>Leased lot ≥ 40,000 sq ft, or a Census town pin if the county has no such lot.</li>
+    <li>Territory can staff 1 technician per 5,000 residents and 1 engineer per 40,000.</li>
+    <li>Uncovered finished homes in range ≥ 12,000 after closer warehouses take what their crew can carry.</li>
+    <li>Warehouse capacity = technicians × homes one warehouse can carry. Lower that number and each open warehouse covers fewer homes, so more warehouses open.</li>
+    <li>If a yard is in outage, a replacement must sit within ~90 miles of that yard. West Texas cannot replace Jacintoport.</li>
+  </ol>
+  <p>Bastrop and Cleveland are town pins. They are not leases. Phase 2 + leftover demand ≥ 12,000 homes with 70-mile separation from Houston/Austin yards is enough for the greedy loop to drop a pin there. That is not a commissioned neighborhood.</p>
+  <p>Machine form: <a href="/policy/warehouse.rego">policy/warehouse.rego</a> (Open Policy Agent).</p>
+  <pre>opa eval -d policy/warehouse.rego -i candidate.json "data.base.warehouse.allow"</pre>
+</body>
+</html>
