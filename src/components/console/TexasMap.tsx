@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { GeoJSON as GeoLayer, LayerGroup, Map as LeafletMap, Polygon } from "leaflet";
-import type { Cell, County, Road, Yard } from "@/lib/sim/coverage";
+import type { Cell, County, Lot, Road, Yard } from "@/lib/sim/coverage";
 import { tierOf, warehouseRing } from "@/lib/sim/coverage";
 import "leaflet/dist/leaflet.css";
 
@@ -26,13 +26,17 @@ type Props = {
   onPick: (countyId: string) => void;
   focusNonce: number;
   focusId: string | null;
+  lots: Lot[];
+  building: { lat: number; lon: number }[];
+  highlight: string | null;
+  movedIds: string[];
 };
 
 type Ring = [number, number][];
 type Feat = { id: string; rings: Ring[] };
 let countyFeats: Feat[] = [];
 
-export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fleet, onDrop, onHover, onPick, focusNonce, focusId }: Props) {
+export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fleet, onDrop, onHover, onPick, focusNonce, focusId, lots, building, highlight, movedIds }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const countyLayer = useRef<GeoLayer | null>(null);
@@ -49,11 +53,19 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
   const pickRef = useRef(onPick);
   const dragLock = useRef(false);
   const countiesRef = useRef(counties);
+  const dotsRef = useRef(dots);
+  const fleetRef = useRef(fleet);
+  const buildRef = useRef(building);
+  const highlightRef = useRef(highlight);
   cellsRef.current = cells;
   dropRef.current = onDrop;
   hoverCb.current = onHover;
   pickRef.current = onPick;
   countiesRef.current = counties;
+  dotsRef.current = dots;
+  fleetRef.current = fleet;
+  buildRef.current = building;
+  highlightRef.current = highlight;
 
   useEffect(() => {
     if (!host.current || mapRef.current) return;
@@ -108,7 +120,9 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
       map.getPane("overlayPane")?.appendChild(svg);
       svgRef.current = svg;
       const redraw = () => {
-        if (svgRef.current && mapRef.current) paintDots(L, mapRef.current, svgRef.current, dotsRef.current, fleetRef.current);
+        if (svgRef.current && mapRef.current) {
+          paintDots(L, mapRef.current, svgRef.current, dotsRef.current, fleetRef.current, buildRef.current, highlightRef.current);
+        }
       };
       map.on("zoomend moveend viewreset", redraw);
       map.on("mousemove", (e) => {
@@ -138,11 +152,6 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
       mapRef.current = null;
     };
   }, []);
-
-  const dotsRef = useRef(dots);
-  const fleetRef = useRef(fleet);
-  dotsRef.current = dots;
-  fleetRef.current = fleet;
 
   const paintCounties = () => {
     const layer = countyLayer.current;
@@ -175,6 +184,19 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
         color = fill;
       }
       if (cell && cell.underConstruction > 0 && !cell.offLimits) color = "#c9842a";
+      const hi = highlightRef.current;
+      if (hi === "zoned" && cell?.offLimits) {
+        fill = "#3d4441";
+        fillOpacity = 0.85;
+        weight = 2.4;
+      } else if (hi === "metro" && tier !== "metro") fillOpacity *= 0.15;
+      else if (hi === "suburb" && tier !== "suburb") fillOpacity *= 0.15;
+      else if (hi === "rural" && tier !== "rural") fillOpacity *= 0.15;
+      else if (hi === "build" && cell && cell.underConstruction > 0) {
+        fill = "#c9842a";
+        fillOpacity = 0.7;
+        weight = 2.6;
+      } else if (hi === "zoned" && !cell?.offLimits) fillOpacity *= 0.12;
       (raw as Polygon).setStyle({ color, weight, fillColor: fill, fillOpacity, dashArray: dash ?? "" });
     });
   };
@@ -184,16 +206,16 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
     paintCounties();
     void import("leaflet").then((L) => {
       if (!mapRef.current || !svgRef.current) return;
-      paintDots(L, mapRef.current, svgRef.current, dots, fleet);
+      paintDots(L, mapRef.current, svgRef.current, dots, fleet, building, highlight);
     });
-  }, [ready, cells, dots, fleet]);
+  }, [ready, cells, dots, fleet, building, highlight]);
 
   useEffect(() => {
     if (!ready || focusNonce === 0 || !focusId || !mapRef.current) return;
     const county = counties.find((c) => c.id === focusId);
     if (!county) return;
     const map = mapRef.current;
-    map.flyTo([county.lat, county.lon], Math.max(map.getZoom(), 9), { duration: 0.55 });
+    map.panTo([county.lat, county.lon], { animate: true, duration: 0.35 });
   }, [ready, focusId, focusNonce, counties]);
 
   useEffect(() => {
@@ -224,14 +246,29 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
     void import("leaflet").then((L) => {
       hulls.clearLayers();
       pins.clearLayers();
+      const open = new Set(yards.map((yard) => yard.id));
+      if (highlight === "sites" || highlight === "yards" || !highlight) {
+        for (const lot of lots.filter((lot) => lot.permitted && !open.has(lot.id))) {
+          const ring = warehouseRing(lot.lat, lot.lon, lot.id, lot.sqft);
+          L.polygon(ring, {
+            color: "#5c6a72",
+            weight: 1.1,
+            dashArray: "4 3",
+            fillColor: "#8aa0b0",
+            fillOpacity: highlight === "sites" ? 0.55 : 0.18,
+            interactive: false,
+          }).addTo(hulls);
+        }
+      }
       for (const yard of yards) {
         const color = yardColor(yard.id);
         const ring = warehouseRing(yard.lat, yard.lon, yard.id, yard.sqft);
+        const moved = movedIds.includes(yard.id);
         const footprint = L.polygon(ring, {
-          color: "#0c1210",
-          weight: 1.6,
+          color: moved ? "#f3d27a" : "#0c1210",
+          weight: moved ? 3.4 : 1.6,
           fillColor: color,
-          fillOpacity: 0.92,
+          fillOpacity: highlight && highlight !== "yards" && highlight !== "sites" ? 0.25 : 0.92,
           interactive: false,
         });
         footprint.addTo(pins);
@@ -269,7 +306,7 @@ export function TexasMap({ counties, cells, yards, roads, used, spurs, dots, fle
       }
       void map;
     });
-  }, [ready, yards, cells, counties]);
+  }, [ready, yards, cells, counties, lots, highlight, movedIds]);
 
   return <div ref={host} className="absolute inset-0" />;
 }
@@ -301,6 +338,8 @@ function paintDots(
   svg: SVGSVGElement,
   dots: [number, number][],
   fleet: { lat: number; lon: number }[],
+  building: { lat: number; lon: number }[],
+  highlight: string | null,
 ) {
   const bounds = map.getBounds().pad(0.2);
   const origin = map.latLngToLayerPoint(bounds.getNorthWest());
@@ -326,19 +365,38 @@ function paintDots(
     const y = pt.y - origin.y;
     rings += `M${x.toFixed(1)} ${y.toFixed(1)}m${-fr},0a${fr},${fr} 0 1,0 ${fr * 2},0a${fr},${fr} 0 1,0 ${-fr * 2},0`;
   }
+  const br = Math.max(1.6, r * 1.05);
+  let builds = "";
+  for (const dot of building) {
+    if (!bounds.contains([dot.lat, dot.lon])) continue;
+    const pt = map.latLngToLayerPoint([dot.lat, dot.lon]);
+    const x = pt.x - origin.x;
+    const y = pt.y - origin.y;
+    builds += `M${x.toFixed(1)} ${y.toFixed(1)}m${-br},0a${br},${br} 0 1,0 ${br * 2},0a${br},${br} 0 1,0 ${-br * 2},0`;
+  }
   svg.replaceChildren();
-  if (homes) {
+  const showHomes = !highlight || highlight === "homes";
+  const showFleet = !highlight || highlight === "fleet";
+  const showBuild = !highlight || highlight === "build";
+  if (homes && showHomes) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", homes);
     path.setAttribute("fill", "#1a2420");
-    path.setAttribute("fill-opacity", "0.72");
+    path.setAttribute("fill-opacity", highlight === "homes" ? "0.95" : "0.72");
     svg.appendChild(path);
   }
-  if (rings) {
+  if (rings && showFleet) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", rings);
     path.setAttribute("fill", "#9d1c1c");
-    path.setAttribute("fill-opacity", "0.9");
+    path.setAttribute("fill-opacity", "0.95");
+    svg.appendChild(path);
+  }
+  if (builds && showBuild) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", builds);
+    path.setAttribute("fill", "#c9842a");
+    path.setAttribute("fill-opacity", highlight === "build" ? "0.95" : "0.8");
     svg.appendChild(path);
   }
 }

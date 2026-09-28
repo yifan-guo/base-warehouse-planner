@@ -3,6 +3,17 @@ import { miles } from "./coverage";
 
 export type ScenarioId = "baseline" | "outage" | "commissioned" | "pullout";
 
+/** Inflate Census permits so commissioning them can open more yards. */
+export function inflatePermits(counties: County[]): County[] {
+  return counties.map((county) => {
+    const permits = Math.min(
+      Math.round(county.homes * 0.38),
+      Math.max(Math.round(county.permits * 14), Math.round(county.homes * 0.1)),
+    );
+    return { ...county, permits };
+  });
+}
+
 export type Approval = {
   id: string;
   name: string;
@@ -50,12 +61,12 @@ export const SCENARIOS: { id: ScenarioId; name: string; detail: string }[] = [
   {
     id: "outage",
     name: "Yard outage",
-    detail: "Jacintoport is down for 14 days. It drops out of the candidate list. Other yards take the counties they can still staff.",
+    detail: "Jacintoport cannot ship for 90 days. The building stays put. It is removed from the candidate list so other yards absorb the counties they can still staff. This is not a relocation.",
   },
   {
     id: "commissioned",
     name: "Neighborhoods commissioned",
-    detail: "2024 permits become finished homes. Under construction goes to zero and those homes join demand.",
+    detail: "Homes under construction become finished demand. Warehouse capacity is finite, so extra homes open more warehouses.",
   },
   {
     id: "pullout",
@@ -156,8 +167,11 @@ export function applyRun(base: CoverageData, inputs: RunInputs): { data: Coverag
   const notes: string[] = [];
 
   if (inputs.scenario === "commissioned") {
+    const extra = counties.reduce((sum, county) => sum + county.permits, 0);
     counties = counties.map((county) => ({ ...county, homes: county.homes + county.permits, permits: 0 }));
-    notes.push("2024 permits are now finished homes. Under construction is zero.");
+    notes.push(
+      `Neighborhoods commissioned. ${extra.toLocaleString()} homes under construction are now finished demand. Warehouse count should rise where those homes sit.`,
+    );
   }
 
   if (inputs.sites) {
@@ -203,7 +217,7 @@ export function applyRun(base: CoverageData, inputs: RunInputs): { data: Coverag
   if (inputs.scenario === "outage") {
     lots = lots.map((lot) => (lot.id === OUTAGE_ID ? { ...lot, permitted: false } : lot));
     const already = inputs.sites?.some((site) => site.id === OUTAGE_ID && site.status === "outage");
-    if (!already) notes.push("Jacintoport is out for 14 days and is not a candidate. Remaining yards take what their crews can carry.");
+    if (!already) notes.push("Jacintoport cannot ship for 90 days. The lot stays in Houston. It is not a candidate on this run. Remaining yards take what their crews can carry.");
   }
 
   if (inputs.scenario === "pullout") {

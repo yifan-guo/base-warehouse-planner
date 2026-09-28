@@ -1,0 +1,200 @@
+[
+  {
+    "id": "houston",
+    "name": "Houston",
+    "lat": 29.76,
+    "lon": -95.37,
+    "radius_miles": 45,
+    "install_sites": 72000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 78.4,
+    "start_date": "2026-11-01"
+  },
+  {
+    "id": "dfw",
+    "name": "Dallas Fort Worth",
+    "lat": 32.78,
+    "lon": -96.8,
+    "radius_miles": 48,
+    "install_sites": 81000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 78.4,
+    "start_date": "2026-11-01"
+  },
+  {
+    "id": "austin",
+    "name": "Austin",
+    "lat": 30.27,
+    "lon": -97.74,
+    "radius_miles": 32,
+    "install_sites": 28000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 78.4,
+    "start_date": "2026-12-01"
+  },
+  {
+    "id": "san-antonio",
+    "name": "San Antonio",
+    "lat": 29.42,
+    "lon": -98.49,
+    "radius_miles": 30,
+    "install_sites": 24000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2026-12-01"
+  },
+  {
+    "id": "el-paso",
+    "name": "El Paso",
+    "lat": 31.76,
+    "lon": -106.49,
+    "radius_miles": 22,
+    "install_sites": 8000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-02-01"
+  },
+  {
+    "id": "mcallen",
+    "name": "McAllen",
+    "lat": 26.2,
+    "lon": -98.23,
+    "radius_miles": 28,
+    "install_sites": 12000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-01-15"
+  },
+  {
+    "id": "corpus",
+    "name": "Corpus Christi",
+    "lat": 27.8,
+    "lon": -97.4,
+    "radius_miles": 24,
+    "install_sites": 7000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-03-01"
+  },
+  {
+    "id": "laredo",
+    "name": "Laredo",
+    "lat": 27.53,
+    "lon": -99.49,
+    "radius_miles": 20,
+    "install_sites": 5000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-03-15"
+  },
+  {
+    "id": "lubbock",
+    "name": "Lubbock",
+    "lat": 33.58,
+    "lon": -101.86,
+    "radius_miles": 22,
+    "install_sites": 6000,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 78.4,
+    "start_date": "2027-01-01"
+  },
+  {
+    "id": "amarillo",
+    "name": "Amarillo",
+    "lat": 35.22,
+    "lon": -101.83,
+    "radius_miles": 20,
+    "install_sites": 3500,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 78.4,
+    "start_date": "2027-04-01"
+  },
+  {
+    "id": "midland",
+    "name": "Midland Odessa",
+    "lat": 31.99,
+    "lon": -102.08,
+    "radius_miles": 28,
+    "install_sites": 5500,
+    "min_kwh_usage": 39.2,
+    "max_kwh_usage": 78.4,
+    "start_date": "2027-02-15"
+  },
+  {
+    "id": "abilene",
+    "name": "Abilene",
+    "lat": 32.45,
+    "lon": -99.73,
+    "radius_miles": 18,
+    "install_sites": 2500,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-05-01"
+  },
+  {
+    "id": "waco",
+    "name": "Waco",
+    "lat": 31.55,
+    "lon": -97.15,
+    "radius_miles": 20,
+    "install_sites": 4000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-01-20"
+  },
+  {
+    "id": "killeen",
+    "name": "Killeen Temple",
+    "lat": 31.12,
+    "lon": -97.73,
+    "radius_miles": 22,
+    "install_sites": 4500,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-01-20"
+  },
+  {
+    "id": "tyler",
+    "name": "Tyler Longview",
+    "lat": 32.35,
+    "lon": -95.3,
+    "radius_miles": 30,
+    "install_sites": 5000,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-02-01"
+  },
+  {
+    "id": "beaumont",
+    "name": "Beaumont",
+    "lat": 30.08,
+    "lon": -94.13,
+    "radius_miles": 22,
+    "install_sites": 3500,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-03-01"
+  },
+  {
+    "id": "bryan",
+    "name": "Bryan College Station",
+    "lat": 30.63,
+    "lon": -96.33,
+    "radius_miles": 18,
+    "install_sites": 2800,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-04-01"
+  },
+  {
+    "id": "wichita-falls",
+    "name": "Wichita Falls",
+    "lat": 33.91,
+    "lon": -98.49,
+    "radius_miles": 16,
+    "install_sites": 1800,
+    "min_kwh_usage": 25.0,
+    "max_kwh_usage": 39.2,
+    "start_date": "2027-05-15"
+  }
+]

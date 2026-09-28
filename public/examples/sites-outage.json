@@ -34,7 +34,7 @@
     "commission_date": "2026-06-01",
     "lead_time_days": 45,
     "status": "outage",
-    "outage_days": 14
+    "outage_days": 90
   },
   {
     "id": "greens-port",

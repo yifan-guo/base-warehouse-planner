@@ -51,6 +51,8 @@ export type Spec = {
   minHomes: number;
   separation: number;
   minSqft: number;
+  /** When a yard is down, only open a replacement that can reach this point. */
+  preferNear?: { lat: number; lon: number } | null;
 };
 
 export type Drag = {
@@ -138,12 +140,13 @@ export const DEFAULT_SPEC: Spec = {
   phase: 2,
   maxMiles: 80,
   spur: 40,
-  homesPerTech: 2200,
+  homesPerTech: 120000,
   residentsPerTech: 5000,
   residentsPerEngineer: 40000,
-  minHomes: 12000,
+  minHomes: 8000,
   separation: 70,
   minSqft: 40000,
+  preferNear: null,
 };
 
 export function miles(aLat: number, aLon: number, bLat: number, bLon: number) {
@@ -368,6 +371,11 @@ function applyDrag(cands: Cand[], data: CoverageData, graph: Graph, drag: Drag |
 }
 
 export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
+  spec = {
+    ...spec,
+    separation: Math.min(spec.separation, Math.max(18, spec.maxMiles * 0.7)),
+    minHomes: Math.min(spec.minHomes, Math.max(3000, Math.round(spec.homesPerTech * 0.08))),
+  };
   const graph = buildGraph(data.roads);
   const { cands, forced } = applyDrag(candidatesFor(data, spec, graph), data, graph, drag);
   const countyNode = data.counties.map((c) => nearestNode(graph, c.lat, c.lon));
@@ -436,7 +444,7 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
       const people = pop[y]!;
       const techs = Math.max(people >= 8000 ? 1 : 0, Math.floor(people / spec.residentsPerTech));
       const engineers = Math.max(people >= 20000 ? 1 : 0, Math.floor(people / spec.residentsPerEngineer));
-      const cap = engineers < 1 || techs < 1 ? 0 : techs * spec.homesPerTech;
+      const cap = engineers < 1 || techs < 1 ? 0 : spec.homesPerTech;
       const members = groups[y]!.slice().sort((a, b) => dist[a]! - dist[b]!);
       let room = cap;
       for (const i of members) {
@@ -455,6 +463,7 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
   };
 
   const scoreOf = (cand: Cand, held: ReturnType<typeof assign>) => {
+    if (spec.preferNear && miles(cand.lat, cand.lon, spec.preferNear.lat, spec.preferNear.lon) > spec.maxMiles + 10) return 0;
     if (spec.phase === 1 && !data.counties.find((c) => c.id === cand.countyId)?.phase1) return 0;
     for (const other of open) {
       const hop = from(cand.node).dist[other.node] ?? Infinity;
@@ -475,7 +484,7 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
     const techs = Math.max(people >= 8000 ? 1 : 0, Math.floor(people / spec.residentsPerTech));
     const engineers = Math.max(people >= 20000 ? 1 : 0, Math.floor(people / spec.residentsPerEngineer));
     if (engineers < 1 || techs < 1) return 0;
-    return Math.min(homes, techs * spec.homesPerTech);
+    return Math.min(homes, spec.homesPerTech);
   };
 
   const pool = cands.filter((c) => c.id !== forced?.id);
@@ -485,6 +494,7 @@ export function solve(data: CoverageData, spec: Spec, drag: Drag | null): Plan {
     let bestScore = 0;
     for (const cand of pool) {
       if (open.some((o) => o.id === cand.id)) continue;
+      if (spec.preferNear && miles(cand.lat, cand.lon, spec.preferNear.lat, spec.preferNear.lon) > spec.maxMiles + 10) continue;
       if (spec.phase === 1 && !data.counties.find((c) => c.id === cand.countyId)?.phase1) continue;
       const score = scoreOf(cand, heldNow);
       if (score > bestScore) {
@@ -718,6 +728,24 @@ export function fleetDots(counties: County[]) {
     for (let i = 0; i < marks; i++) {
       const ang = n * 2.399;
       const rad = 0.08 + (n % 6) * 0.045;
+      dots.push({
+        lat: county.lat + Math.cos(ang) * rad,
+        lon: county.lon + Math.sin(ang) * rad * 1.15,
+      });
+      n += 1;
+    }
+  }
+  return dots;
+}
+
+export function buildDots(counties: County[]) {
+  const dots: { lat: number; lon: number }[] = [];
+  let n = 0;
+  for (const county of counties) {
+    const marks = Math.max(0, Math.round(county.permits / 2500));
+    for (let i = 0; i < marks; i++) {
+      const ang = n * 2.399 + 0.7;
+      const rad = 0.04 + (n % 5) * 0.028;
       dots.push({
         lat: county.lat + Math.cos(ang) * rad,
         lon: county.lon + Math.sin(ang) * rad * 1.15,
