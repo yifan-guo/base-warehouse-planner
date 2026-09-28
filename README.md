@@ -98,3 +98,59 @@ What information can the solver output to act on?
 - remember SoW from somewhere 
 What algorithm should the solver use?
 - Greedy, rule-based. Why not an optimization one like A*?
+
+# # Demo Video Instructions
+
+Your demo video is one of the most powerful ways to show what your team built, and why it matters. Your demo video should be 2-5 minutes showcasing the core loop of what you built.
+
+Use Loom’s screen recorder (they’ve got a great Free Tier) with the camera on to show your team and give a live walkthrough of your Hackathon submission. **Keep it under 5 minutes.**
+
+Here’s the flow we recommend:
+
+---
+
+### **1. Introduce Your Team**
+
+Start by introducing each member of the team.
+
+**Briefly** mention who you are, what you worked on, your role in building the project, and what you worked on.
+
+Team intros should last no longer than 30 seconds.
+
+---
+
+### **2. Give a High-Level Elevator Pitch**
+
+In 30 seconds or less, explain your project at a high level:
+
+- What did you build?
+- Who is it for?
+- Why does it matter or excite you?
+
+This should feel like a product trailer. Get people hooked before diving into the details.
+
+---
+
+### **3. Go Into a Live Demo**
+
+Now jump straight into showing the product in action. Try to minimize editing or cuts except when impossible (if it takes a while to run, etc.)
+
+Showcase the console logs while running the demo if possible or relevant.
+
+---
+
+### **4. Narrate How You Built It**
+
+During the recorded demo, talk through your thought process and the technical decisions that made it possible:
+
+- What frameworks or APIs did you use?
+- How does the system function under the hood?
+- What challenges did you solve along the way?
+
+Gives the judges insight into your engineering depth and teamwork.
+
+---
+
+### **5. Speak to the Why and answer “So What?”**
+
+Close by emphasizing who your project is for and why it’s exciting. What problem are you solving, and what’s next if you were to keep building? Answer “So what?”.
